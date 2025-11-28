@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kanban_postgres
+    environment:
+      POSTGRES_USER: kanban_user
+      POSTGRES_PASSWORD: kanban123
+      POSTGRES_DB: kanban_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - kanban_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  websocket:
+    build:
+      context: .
+      dockerfile: Dockerfile.websocket
+    container_name: kanban_websocket
+    ports:
+      - "8081:8081"
+    environment:
+      - WS_PORT=8081
+    restart: unless-stopped
+
+volumes:
+  kanban_pgdata:
