@@ -25,5 +25,19 @@ services:
       - WS_PORT=8081
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: kanban_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: kanban_user
+      RABBITMQ_DEFAULT_PASS: kanban123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - kanban_rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+
 volumes:
   kanban_pgdata:
+  kanban_rabbitmq_data:

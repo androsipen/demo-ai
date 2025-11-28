@@ -154,6 +154,10 @@ class KanbanWebSocket {
                 this.emit('task:updated', data.payload);
                 break;
 
+            case 'activity:new':
+                this.emit('activity:new', data.payload);
+                break;
+
             case 'error':
                 console.error('[WS] Server error:', data.payload.message);
                 this.emit('error', data.payload);

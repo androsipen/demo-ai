@@ -8,6 +8,7 @@ use yii\web\Response;
 use yii\filters\VerbFilter;
 use app\models\KanbanStatus;
 use app\models\KanbanTask;
+use app\models\ActivityLog;
 
 class KanbanController extends Controller
 {
@@ -66,7 +67,15 @@ class KanbanController extends Controller
             ];
         }
 
+        // Get old status key before moving
+        $oldStatus = KanbanStatus::findOne($task->status_id);
+        $oldStatusKey = $oldStatus ? $oldStatus->key : null;
+        $taskTitle = $task->title;
+
         if ($task->moveToStatus($newStatus->id)) {
+            // Publish to RabbitMQ
+            Yii::$app->rabbitmq->publishTaskMoved($taskId, $taskTitle, $oldStatusKey, $newStatusKey);
+
             return [
                 'success' => true,
                 'taskId' => $taskId,
@@ -105,6 +114,9 @@ class KanbanController extends Controller
             ->max('sort_order') + 1;
 
         if ($task->save()) {
+            // Publish to RabbitMQ
+            Yii::$app->rabbitmq->publishTaskCreated($task->id, $task->title, $statusKey);
+
             return [
                 'success' => true,
                 'task' => [
@@ -137,7 +149,12 @@ class KanbanController extends Controller
             ];
         }
 
+        $taskTitle = $task->title;
+
         if ($task->delete()) {
+            // Publish to RabbitMQ
+            Yii::$app->rabbitmq->publishTaskDeleted($taskId, $taskTitle);
+
             return [
                 'success' => true,
                 'taskId' => $taskId,
@@ -147,6 +164,24 @@ class KanbanController extends Controller
         return [
             'success' => false,
             'error' => 'Failed to delete task',
+        ];
+    }
+
+    /**
+     * Get recent activity logs for the feed
+     */
+    public function actionActivityFeed()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+
+        $limit = Yii::$app->request->get('limit', 20);
+        $activities = ActivityLog::getRecent($limit);
+
+        return [
+            'success' => true,
+            'activities' => array_map(function ($activity) {
+                return $activity->toArray();
+            }, $activities),
         ];
     }
 }

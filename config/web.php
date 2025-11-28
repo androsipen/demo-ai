@@ -42,6 +42,9 @@ $config = [
             ],
         ],
         'db' => $db,
+        'rabbitmq' => [
+            'class' => 'app\components\RabbitMQPublisher',
+        ],
         /*
         'urlManager' => [
             'enablePrettyUrl' => true,

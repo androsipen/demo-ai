@@ -58,6 +58,12 @@ class KanbanWebSocket implements MessageComponentInterface
 
         echo "Message from {$from->resourceId}: {$data['type']}\n";
 
+        // Handle activity broadcasts from worker (broadcast to ALL clients)
+        if ($data['type'] === 'activity:new') {
+            $this->broadcastAll($data);
+            return;
+        }
+
         // Add sender info to the payload
         $data['payload']['senderId'] = $from->resourceId;
 

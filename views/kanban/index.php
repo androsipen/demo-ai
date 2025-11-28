@@ -46,6 +46,17 @@ $this->registerJsFile('@web/js/kanban-websocket.js', ['position' => \yii\web\Vie
             </div>
         <?php endforeach; ?>
     </div>
+
+    <!-- Activity Feed -->
+    <div class="activity-feed">
+        <div class="activity-feed-header">
+            <h3 class="activity-feed-title">Activity Feed</h3>
+            <span class="activity-feed-badge" id="activityCount">0</span>
+        </div>
+        <div class="activity-feed-body" id="activityList">
+            <div class="activity-empty">No activity yet. Start moving tasks!</div>
+        </div>
+    </div>
 </div>
 
 <!-- Add Task Modal -->
@@ -78,6 +89,7 @@ $this->registerJsFile('@web/js/kanban-websocket.js', ['position' => \yii\web\Vie
 <?php
 $moveTaskUrl = \yii\helpers\Url::to(['kanban/move-task']);
 $createTaskUrl = \yii\helpers\Url::to(['kanban/create-task']);
+$activityFeedUrl = \yii\helpers\Url::to(['kanban/activity-feed']);
 $wsUrl = 'ws://localhost:8081';
 
 $css = <<<CSS
@@ -446,12 +458,132 @@ textarea.form-control {
     background: #6c757d;
     cursor: not-allowed;
 }
+
+/* Activity Feed Styles */
+.activity-feed {
+    margin-top: 30px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.activity-feed-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: #495057;
+    color: white;
+}
+
+.activity-feed-title {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.activity-feed-badge {
+    background: rgba(255,255,255,0.2);
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.85em;
+}
+
+.activity-feed-body {
+    max-height: 300px;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.activity-empty {
+    text-align: center;
+    padding: 30px;
+    color: #6c757d;
+    font-style: italic;
+}
+
+.activity-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 12px;
+    margin-bottom: 8px;
+    background: white;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    animation: slideIn 0.3s ease;
+}
+
+.activity-item:last-child {
+    margin-bottom: 0;
+}
+
+.activity-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.activity-icon--created {
+    background: #d4edda;
+    color: #155724;
+}
+
+.activity-icon--moved {
+    background: #cce5ff;
+    color: #004085;
+}
+
+.activity-icon--deleted {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.activity-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.activity-description {
+    font-size: 0.9rem;
+    color: #212529;
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+.activity-description strong {
+    font-weight: 600;
+}
+
+.activity-time {
+    font-size: 0.75rem;
+    color: #6c757d;
+}
+
+.activity-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.8em;
+    font-weight: 500;
+}
+
+.activity-status--backlog { background: #6c757d20; color: #6c757d; }
+.activity-status--todo { background: #0d6efd20; color: #0d6efd; }
+.activity-status--in_progress { background: #ffc10720; color: #856404; }
+.activity-status--done { background: #19875420; color: #198754; }
 CSS;
 
 $js = <<<JS
 document.addEventListener('DOMContentLoaded', function() {
     const moveTaskUrl = '{$moveTaskUrl}';
     const createTaskUrl = '{$createTaskUrl}';
+    const activityFeedUrl = '{$activityFeedUrl}';
     const wsUrl = '{$wsUrl}';
 
     // Initialize WebSocket
@@ -506,8 +638,17 @@ document.addEventListener('DOMContentLoaded', function() {
         addTaskToDOM(data.task, true);
     });
 
+    // Handle new activity from WebSocket
+    ws.on('activity:new', function(data) {
+        console.log('New activity:', data);
+        addActivityToFeed(data);
+    });
+
     // Connect to WebSocket server
     ws.connect();
+
+    // Load existing activities on page load
+    loadActivityFeed();
 
     function updateClientsCount(count) {
         if (count > 1) {
@@ -515,6 +656,112 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             statusClients.textContent = '';
         }
+    }
+
+    // Activity Feed Functions
+    const activityList = document.getElementById('activityList');
+    const activityCount = document.getElementById('activityCount');
+    let activities = [];
+
+    function loadActivityFeed() {
+        fetch(activityFeedUrl)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && data.activities) {
+                    activities = data.activities;
+                    renderActivityFeed();
+                }
+            })
+            .catch(error => console.error('Failed to load activity feed:', error));
+    }
+
+    function renderActivityFeed() {
+        if (activities.length === 0) {
+            activityList.innerHTML = '<div class="activity-empty">No activity yet. Start moving tasks!</div>';
+            activityCount.textContent = '0';
+            return;
+        }
+
+        activityList.innerHTML = activities.map(activity => createActivityHTML(activity)).join('');
+        activityCount.textContent = activities.length;
+    }
+
+    function addActivityToFeed(activity) {
+        // Remove empty message if present
+        const emptyMsg = activityList.querySelector('.activity-empty');
+        if (emptyMsg) {
+            emptyMsg.remove();
+        }
+
+        // Add to beginning of activities array
+        activities.unshift(activity);
+
+        // Limit to 50 activities
+        if (activities.length > 50) {
+            activities.pop();
+        }
+
+        // Create and prepend new activity element
+        const activityEl = document.createElement('div');
+        activityEl.innerHTML = createActivityHTML(activity);
+        const newItem = activityEl.firstChild;
+        activityList.insertBefore(newItem, activityList.firstChild);
+
+        // Update count
+        activityCount.textContent = activities.length;
+
+        // Remove oldest if over limit
+        while (activityList.children.length > 50) {
+            activityList.removeChild(activityList.lastChild);
+        }
+    }
+
+    function createActivityHTML(activity) {
+        const iconClass = getActivityIconClass(activity.action);
+        const icon = getActivityIcon(activity.action);
+        const timeAgo = formatTimeAgo(activity.created_at);
+
+        return '<div class="activity-item">' +
+            '<div class="activity-icon ' + iconClass + '">' + icon + '</div>' +
+            '<div class="activity-content">' +
+                '<div class="activity-description">' + escapeHtml(activity.description) + '</div>' +
+                '<div class="activity-time">' + timeAgo + '</div>' +
+            '</div>' +
+        '</div>';
+    }
+
+    function getActivityIconClass(action) {
+        switch (action) {
+            case 'task_created': return 'activity-icon--created';
+            case 'task_moved': return 'activity-icon--moved';
+            case 'task_deleted': return 'activity-icon--deleted';
+            default: return '';
+        }
+    }
+
+    function getActivityIcon(action) {
+        switch (action) {
+            case 'task_created': return '+';
+            case 'task_moved': return '→';
+            case 'task_deleted': return '×';
+            default: return '•';
+        }
+    }
+
+    function formatTimeAgo(dateString) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffSec = Math.floor(diffMs / 1000);
+        const diffMin = Math.floor(diffSec / 60);
+        const diffHour = Math.floor(diffMin / 60);
+        const diffDay = Math.floor(diffHour / 24);
+
+        if (diffSec < 60) return 'just now';
+        if (diffMin < 60) return diffMin + ' min ago';
+        if (diffHour < 24) return diffHour + ' hour' + (diffHour > 1 ? 's' : '') + ' ago';
+        if (diffDay < 7) return diffDay + ' day' + (diffDay > 1 ? 's' : '') + ' ago';
+        return date.toLocaleDateString();
     }
 
     // Add Task Button Click Handlers
